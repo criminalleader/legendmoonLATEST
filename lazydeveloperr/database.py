@@ -119,23 +119,58 @@ class Database:
         return record.get("message_id", 0) if record else 0
 
     # Forwarded IDs management
-    async def get_forwarded_ids(self, user_id: int) -> set:
-        """
-        Get the set of forwarded message IDs for a specific user.
-        """
-        user_data = await self.forwarded_col.find_one({"user_id": user_id})
-        if user_data and "forwarded_ids" in user_data:
-            return set(user_data["forwarded_ids"])
-        return set()
+    # async def get_forwarded_ids(self, user_id: int) -> set:
+    #     """
+    #     Get the set of forwarded message IDs for a specific user.
+    #     """
+    #     user_data = await self.forwarded_col.find_one({"user_id": user_id})
+    #     if user_data and "forwarded_ids" in user_data:
+    #         return set(user_data["forwarded_ids"])
+    #     return set()
 
-    async def add_forwarded_id(self, user_id: int, msg_id: int):
+    # async def add_forwarded_id(self, user_id: int, msg_id: int):
+    #     """
+    #     Add a forwarded message ID to the database for a specific user.
+    #     """
+    #     await self.forwarded_col.update_one(
+    #         {"user_id": user_id},
+    #         {"$addToSet": {"forwarded_ids": msg_id}},  # Use $addToSet to avoid duplicates
+    #         upsert=True  # Create the document if it doesn't exist
+    #     )
+    async def get_forwarded_ids(self, user_id, channel_id):
         """
-        Add a forwarded message ID to the database for a specific user.
+        Get the list of forwarded IDs for a specific user and channel.
         """
-        await self.forwarded_col.update_one(
-            {"user_id": user_id},
-            {"$addToSet": {"forwarded_ids": msg_id}},  # Use $addToSet to avoid duplicates
-            upsert=True  # Create the document if it doesn't exist
+        user = await self.col.find_one({'_id': user_id})
+        if not user:
+            return set()  # No forwarded messages found
+
+        forwarded = user.get('forwarded_ids', {})
+        return set(forwarded.get(str(channel_id), []))  # Return forwarded IDs for the channel
+
+    async def add_forwarded_id(self, user_id, channel_id, msg_id):
+        """
+        Add a message ID to the list of forwarded IDs for a specific user and channel.
+        """
+        await self.col.update_one(
+            {'_id': user_id},
+            {'$addToSet': {f'forwarded_ids.{channel_id}': msg_id}}
         )
+
+    async def clean_forwarded_ids(self, user_id, channel_id=None):
+        """
+        Remove forwarded IDs for a specific channel or all channels for a user.
+        If `channel_id` is None, all forwarded IDs are cleared for the user.
+        """
+        if channel_id:
+            await self.col.update_one(
+                {'_id': user_id},
+                {'$unset': {f'forwarded_ids.{channel_id}': ""}}
+            )
+        else:
+            await self.col.update_one(
+                {'_id': user_id},
+                {'$unset': {'forwarded_ids': ""}}
+            )
 
 db = Database(DB_URL, DB_NAME)

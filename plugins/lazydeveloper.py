@@ -400,7 +400,8 @@ async def autoposter(client, message):
     DELAY_BETWEEN_POSTS = 60  # 15 minutes in seconds
 
     # Fetch all messages from the main channel
-    forwarded_ids = set(await db.get_forwarded_ids(user_id))  # IDs already forwarded
+    # forwarded_ids = set(await db.get_forwarded_ids(user_id))  # IDs already forwarded
+    forwarded_ids = set(await db.get_forwarded_ids(user_id, MAIN_POST_CHANNEL))  # Fetch forwarded IDs for the main post channel
     messages = []
 
     async for msg in lazy_userbot.iter_messages(MAIN_POST_CHANNEL, reverse=True):
@@ -409,6 +410,7 @@ async def autoposter(client, message):
 
     shuffle(messages)
     total_messages = len(messages)
+    print(total_messages)
     in_queue = total_messages
     sent_count = 0
 
@@ -433,10 +435,12 @@ async def autoposter(client, message):
             while any(channel_queues.values()):  # Continue until all queues are empty
                 
                 for channel_id in CHANNELS:
+                    
                     if not channel_queues[channel_id]:
                         continue  # Skip if the queue for this channel is empty
 
                     msg = channel_queues[channel_id].pop(0)  # Get the next message for this channel
+                    in_queue -= 1
 
                     try:
                         # Forward the message to the current channel
@@ -458,9 +462,9 @@ async def autoposter(client, message):
 
                         # Mark the message as forwarded and update progress
                         forwarded_ids.add(msg.id)
-                        await db.add_forwarded_id(user_id, msg.id)
+                        await db.add_forwarded_id(user_id, MAIN_POST_CHANNEL, msg.id)
                         sent_count += 1
-                        in_queue -= 1
+                        
                         progress_percentage = (sent_count / total_messages) * 100
                         percent = f"{progress_percentage:.2f}"
                         await post_progress.edit_text(
@@ -631,6 +635,35 @@ async def autoposter(client, message):
     # else:
     #     print("Session is still connected.")
 
+
+@Client.on_message(filters.command("clean_forward_ids"))
+async def clean_forward_ids(client, message):
+    user_id = message.from_user.id
+
+    # Verify user authorization
+    if not await verify_user(user_id):
+        return await message.reply("⛔ You are not authorized to use this bot.")
+    
+    args = message.text.split()
+    if len(args) < 2:
+        return await message.reply(
+            "⚠️ Usage: `/clean_forward_ids <channel_id>` to clean specific channel, or `/clean_forward_ids all` to clean all channels.",
+            parse_mode=enums.ParseMode.MARKDOWN
+        )
+
+    # Parse the channel_id or 'all'
+    target = args[1]
+    try:
+        if target.lower() == 'all':
+            await db.clean_forwarded_ids(user_id)
+            return await message.reply("✅ All forwarded IDs for all channels have been cleared.")
+        else:
+            channel_id = int(target)
+            await db.clean_forwarded_ids(user_id, channel_id)
+            return await message.reply(f"✅ Forwarded IDs for channel `{channel_id}` have been cleared.")
+    except Exception as e:
+        print(f"❌ Error cleaning forwarded IDs: {e}")
+        return await message.reply(f"❌ Failed to clean forwarded IDs: {e}")
 
 
 async def verify_user(user_id: int):

@@ -11,7 +11,7 @@ async def start(client, message):
     user = message.from_user
     if not await db.is_user_exist(user.id):
         await db.add_user(user.id)             
-    txt=f"👋 Hey {message.from_user.mention} \nɪ'ᴍ ᴀɴ ᴀᴅᴠᴀɴᴄᴇ ᴀᴜᴛᴏ ᴘᴏsᴛ ғᴏʀᴡᴀʀᴅᴇʀ ʙᴏᴛ. ɪ ᴄᴀɴ ғᴏʀᴡᴀʀᴅ ᴘᴏsᴛ ᴛᴏ ᴜɴʟɪᴍɪᴛᴇᴅ ᴄʜᴀɴɴᴇʟs ɪɴ sᴘᴇᴄɪғɪᴇᴅ ᴛɪᴍᴇ ɪɴᴛᴇʀᴠᴀʟ.\n\n<blockquote>♥ ʙᴇʟᴏᴠᴇᴅ ᴏᴡɴᴇʀ <a href='https://telegram.me/Legend_Moon'>💴Legend💰💳</a> 🍟</blockquote>",
+    txt=f"👋 Hey {message.from_user.mention}\nɪ'ᴍ ᴀɴ ᴀᴅᴠᴀɴᴄᴇ ᴀᴜᴛᴏ ᴘᴏsᴛ ғᴏʀᴡᴀʀᴅᴇʀ ʙᴏᴛ. ɪ ᴄᴀɴ ғᴏʀᴡᴀʀᴅ ᴘᴏsᴛ ᴛᴏ ᴜɴʟɪᴍɪᴛᴇᴅ ᴄʜᴀɴɴᴇʟs ɪɴ sᴘᴇᴄɪғɪᴇᴅ ᴛɪᴍᴇ ɪɴᴛᴇʀᴠᴀʟ.\n\n<blockquote>♥ ʙᴇʟᴏᴠᴇᴅ ᴏᴡɴᴇʀ <a href='https://telegram.me/Legend_Moon'>💴Legend💰💳</a> 🍟</blockquote>",
     button=InlineKeyboardMarkup([[
         InlineKeyboardButton("✿.｡:☆ ᴏᴡɴᴇʀ ⚔ ᴅᴇᴠs ☆:｡.✿", callback_data='dev')
         ],[
@@ -25,7 +25,7 @@ async def start(client, message):
         await message.reply_photo(START_PIC, caption=txt, reply_markup=button)       
     else:
         await message.reply_text(text=txt, reply_markup=button, disable_web_page_preview=True)
-   
+
 
 @Client.on_callback_query()
 async def cb_handler(client, query: CallbackQuery):
@@ -78,8 +78,3 @@ async def cb_handler(client, query: CallbackQuery):
             await query.message.reply_to_message.delete()
         except:
             await query.message.delete()
-
-
-
-
-
