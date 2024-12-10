@@ -59,9 +59,7 @@ class Database:
         user = await self.col.find_one({'_id': int(id)})
         return user.get('forward_id', None)
     
-    async def set_lazy_target_chat_id(self, id, target_chat_id):
-        z = await self.col.update_one({'_id': int(id)}, {'$set': {'lazy_target_chat_id': target_chat_id}})
-        print(z)
+
     # session
     async def set_session(self, id, session_string):
         print(session_string)
@@ -98,6 +96,9 @@ class Database:
         user = await self.col.find_one({'_id': int(id)})
         return user.get('lazy_target_chat_id', None)
     
+    async def set_lazy_target_chat_id(self, id, target_chat_id):
+        z = await self.col.update_one({'_id': int(id)}, {'$set': {'lazy_target_chat_id': target_chat_id}})
+        print(z)
     # setting sikp messages for the bot
     async def set_skip_msg_id(self, message_id):
         """
@@ -172,5 +173,23 @@ class Database:
                 {'_id': user_id},
                 {'$unset': {'forwarded_ids': ""}}
             )
+
+
+    async def get_channel_ids(self, user_id):
+        user = await self.col.find_one({"_id": user_id})
+        return user.get("channel_ids", []) if user else []
+    
+    async def remove_channel_id(self, user_id, channel_id):
+        await self.col.update_one(
+            {"_id": user_id},
+            {"$pull": {"channel_ids": channel_id}}
+        )
+
+    async def add_channel_id(self, user_id, channel_id):
+        await self.col.update_one(
+            {"_id": user_id},
+            {"$addToSet": {"channel_ids": channel_id}},
+            upsert=True
+        )
 
 db = Database(DB_URL, DB_NAME)

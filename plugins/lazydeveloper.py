@@ -148,7 +148,7 @@ async def getsession(client , message):
     await client.send_message(chat_id=user_id, text=f"Here is your session string...\n\n<spoiler><code>{session}</code></spoiler>\n\n⚠ Please dont share this string to anyone, You may loOSE your account.", parse_mode=enums.ParseMode.HTML)
   
 
-@Client.on_message(filters.private & filters.command("generate"))
+@Client.on_message(filters.private & filters.command("login"))
 async def generate_session(bot, msg):
     lazyid = msg.from_user.id
 
@@ -339,6 +339,8 @@ async def cancelled(msg):
 
 lock = asyncio.Lock()
 
+
+
 @Client.on_message(filters.command("post"))
 async def autoposter(client, message):
     user_id = message.from_user.id
@@ -354,13 +356,13 @@ async def autoposter(client, message):
         return await message.reply("⚠️ Another process is running. Please wait until previous process complete. ⏳")
     
     # setting up target chat id to take post from - BASE-CHANNEL
-    chat_id = await client.ask(
-        text="Send Target Channel Id, From Where You Want Posts To Be Forwarded: in `-100XXXX` Format ",
-        chat_id=message.chat.id
-    )
+    # chat_id = await client.ask(
+    #     text="Send Target Channel Id, From Where You Want Posts To Be Forwarded: in `-100XXXX` Format ",
+    #     chat_id=message.chat.id
+    # )
 
-    target_chat_id = int(chat_id.text)
-    print(f'✅Set target chat => {target_chat_id}' )
+    target_chat_id = await db.get_lazy_target_chat_id(user_id)
+    # print(f'✅Set target chat => {target_chat_id}' )
     
     # try:
     #     chat_info = await client.get_chat(target_chat_id)
@@ -368,9 +370,9 @@ async def autoposter(client, message):
     #     await client.send_message(message.chat.id, f"Something went wrong while accessing chat : {chat_info}")
     #     print(f"Error accessing chat: {e}")
 
-    await db.set_lazy_target_chat_id(message.from_user.id, target_chat_id)
+    # await db.set_lazy_target_chat_id(message.from_user.id, target_chat_id)
 
-    print(f"Starting to forward files from channel {target_chat_id} to All-Channels.")
+    # print(f"Starting to forward files from channel {target_chat_id} to All-Channels.")
 
     sessionstring = await db.get_session(user_id)
     apiid = await db.get_api(user_id)
@@ -661,6 +663,98 @@ async def autoposter(client, message):
     #     print("Session is disconnected successfully!")
     # else:
     #     print("Session is still connected.")
+
+@Client.on_message(filters.command("index_db"))
+async def indexdb(client, message):
+    # setting up target chat id to take post from - BASE-CHANNEL
+    user_id = message.from_user.id
+
+    chat_id_msg = await client.ask(
+        text="Send Index Channel Id, From Where You Want Posts To Be Forwarded: in `-100XXXX` Format ",
+        chat_id=message.chat.id
+    )
+
+    try:
+        target_chat_id = int(chat_id_msg.text)
+        await db.set_lazy_target_chat_id(user_id, target_chat_id)
+    except ValueError as e:
+        await chat_id_msg.reply("Please send valid channel id")
+        print(e)
+        return
+
+@Client.on_message(filters.command("view_db"))
+async def indexdb(client, message):
+    user_id = message.from_user.id
+    try:
+        id = await db.get_lazy_target_chat_id(user_id)
+        await message.reply(f"Here is your current DB-CHANNEL-ID\n\n├🆔 {id}")
+    except Exception as lazyerror:
+        print(lazyerror)
+        await message.reply("Something went wrong, PLease try again later...")
+        return
+
+
+@Client.on_message(filters.command("index_channel"))
+async def set_channel(client, message: Message):
+    user_id = message.from_user.id
+
+    # Ask the user for the channel ID
+    channel_msg = await client.ask(
+        user_id, 
+        "📱 Please send the `channel_id` you want to add to list:", 
+        filters=filters.text
+    )
+
+    # Validate the channel ID
+    try:
+        channel_id = int(channel_msg.text)
+    except ValueError:
+        return await channel_msg.reply("❌ Invalid channel ID. Please send a valid Channel ID.")
+    
+    # Check if the channel ID is already in the user's list
+    existing_channel_ids = await db.get_channel_ids(user_id)
+    if channel_id in existing_channel_ids:
+        return await channel_msg.reply(f"⚠️ Channel ID {channel_id} is already in your list. Please send another ID.")
+
+    # Add the channel ID to the user's list using the existing database method
+
+    await db.add_channel_id(user_id, channel_id)
+    
+    await channel_msg.reply(f"✅ Channel ID {channel_id} has been added successfully.")
+
+
+@Client.on_message(filters.command("remove_channel"))
+async def remove_channel(client, message: Message):
+    user_id = message.from_user.id
+
+    # Extract the channel_id from the message text
+    parts = message.text.split()
+    if len(parts) < 2:
+        return await message.reply("⚠️ Usage: `/remove_channel <channel_id>` to remove specific channel from list...\n\n❌ Please provide a `channel_id` to remove.")
+
+    try:
+        channel_id = int(parts[1])
+    except ValueError:
+        return await message.reply("❌ Invalid channel ID. Please provide a valid numeric ID.")
+
+    # Remove the channel ID from the user's list using the existing database method
+    await db.remove_channel_id(user_id, channel_id)
+    
+    await message.reply(f"✅ Channel ID {channel_id} has been removed successfully.")
+
+@Client.on_message(filters.command("list_channels"))
+async def list_channels(client, message: Message):
+    user_id = message.from_user.id
+
+    # Get the list of channel IDs from the database
+    channel_ids = await db.get_channel_ids(user_id)
+
+    if not channel_ids:
+        return await message.reply("❌ You don't have any channel IDs saved yet.")
+
+    # Format the list of channel IDs and send it to the user
+    channel_list = "\n├🆔 ".join([str(channel_id) for channel_id in channel_ids])
+    await message.reply(f"Your saved channel IDs:\n<code>{channel_list}</code>", parse_mode=enums.ParseMode.HTML)
 
 
 @Client.on_message(filters.command("clean_forward_ids"))
