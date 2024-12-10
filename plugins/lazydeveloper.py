@@ -431,6 +431,7 @@ async def autoposter(client, message):
     async with lock:
         try:
             while any(channel_queues.values()):  # Continue until all queues are empty
+                
                 for channel_id in CHANNELS:
                     if not channel_queues[channel_id]:
                         continue  # Skip if the queue for this channel is empty
@@ -459,6 +460,7 @@ async def autoposter(client, message):
                         forwarded_ids.add(msg.id)
                         await db.add_forwarded_id(user_id, msg.id)
                         sent_count += 1
+                        in_queue -= 1
                         progress_percentage = (sent_count / total_messages) * 100
                         percent = f"{progress_percentage:.2f}"
                         await post_progress.edit_text(
