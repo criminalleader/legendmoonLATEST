@@ -438,21 +438,23 @@ async def rename(client, message):
                     try:
                         # Custom caption with main channel link
                         main_post_link = f"https://t.me/c/{str(MAIN_POST_CHANNEL)[4:]}/{msg.id}"
-                        custom_caption = (msg.caption or "") + f"\n\n⚡Join: {CHANNEL_LINK1}\n⚡Join: {CHANNEL_LINK2}\n🔗 [Source Post]({main_post_link})"
+                        # custom_caption = f"\n\n⚡Join: {CHANNEL_LINK1}\n⚡Join: {CHANNEL_LINK2}\n🔗 [Source Post]({main_post_link})"
                         
-                        if msg.media:
-                            fd = await lazy_userbot.send_file(
-                                chat_id=channel_id,
-                                file=msg.media,
-                                caption=custom_caption,
-                                parse_mode="html",
-                            )
-                        else:
-                            fd = await lazy_userbot.send_message(
-                                chat_id=channel_id,
-                                text=custom_caption,
-                                parse_mode="html",
-                            )
+                        fd = await lazy_userbot.forward_messages(channel_id, msg.id, MAIN_POST_CHANNEL)
+
+                        # if msg.media:
+                        #     fd = await lazy_userbot.send_file(
+                        #         chat_id=channel_id,
+                        #         file=msg.media,
+                        #         caption=custom_caption,
+                        #         parse_mode="html",
+                        #     )
+                        # else:
+                        #     fd = await lazy_userbot.send_message(
+                        #         chat_id=channel_id,
+                        #         text=custom_caption,
+                        #         parse_mode="html",
+                        #     )
 
                         print(f"✅ Forwarded message ID {msg.id} to channel {channel_id}")
                         fd_final_chat = str(channel_id)[4:]
@@ -479,7 +481,7 @@ async def rename(client, message):
                     await asyncio.sleep(DELAY_BETWEEN_POSTS)
 
                 # Exit loop once all subchannels are processed
-                break
+                # break
             except Exception as e:
                 print(f"❌ Error forwarding message ID {msg.id}: {e}")
 
