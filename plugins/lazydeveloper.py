@@ -5,7 +5,8 @@ from lazydeveloperr.database import db
 from asyncio.exceptions import TimeoutError
 from lazydeveloperr.txt import lazydeveloper
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-
+from random import shuffle
+from pyrogram.errors import FloodWait
 from plugins.Data import Data
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -398,92 +399,183 @@ async def rename(client, message):
     MAIN_POST_CHANNEL = target_chat_id  # Replace with your MAIN_POST_CHANNEL ID
     DELAY_BETWEEN_POSTS = 60  # 15 minutes in seconds
     total_messages = 0
-    
-    try:
-        # messages = []
-        last_message_id = await db.get_skip_msg_id()  # Start fetching from the most recent message
-        print(f"The last message id got => {last_message_id}")
-        async with lock:
-            # running first loop to show realtime update
-            async for _ in lazy_userbot.iter_messages(MAIN_POST_CHANNEL, offset_id=last_message_id, reverse=True):
-                total_messages += 1
 
-            print(f"Total messages to forward: {total_messages}")
-            
-            if total_messages == 0:
-                # If no messages to process, inform the user immediately
-                await message.reply("✅ No new messages to forward.")
-                return
+    # Fetch all messages from the main channel
+    forwarded_ids = set(await db.get_forwarded_ids(user_id))  # IDs already forwarded
+    messages = []
+    # last_message_id = await db.get_skip_msg_id()  # Start fetching from the most recent message
+    # print(f"The last message id got => {last_message_id}")
 
-            print(f"Total messages to forward: {total_messages}")
-            sent_count = 0
-            in_queue = total_messages
+    async for msg in lazy_userbot.iter_messages(MAIN_POST_CHANNEL, reverse=True):
+        if msg.id not in forwarded_ids:
+            messages.append(msg)
 
-            channel_progress = await client.send_message(
+    shuffle(messages)
+    total_messages = len(messages)
+    in_queue = total_messages
+    sent_count = 0
+
+    if not messages:
+        return await message.reply("✅ All messages from the main channel have already been forwarded.")
+
+    channel_progress = await client.send_message(
                 user_id,
                 lazydeveloper.CHANNEL_PROGRESS.format("⏳", "⏳", "⏳", "⏳")
             )
 
-            post_progress = await client.send_message(
+    post_progress = await client.send_message(
                 user_id,
                 lazydeveloper.POST_PROGRESS.format(sent_count, total_messages, in_queue, 0)
             )
-
-            # Fetch messages in reverse order
-            async for msg in lazy_userbot.iter_messages(MAIN_POST_CHANNEL, offset_id=last_message_id, reverse=True):
+    
+    try:
+        for msg in messages:
+            
+            try:
                 in_queue -= 1
-                final_chat = str(MAIN_POST_CHANNEL)[4:]
-                main_post_link = f"<a href='https://telegram.me/c/{final_chat}/{msg.id}'>ʟɪɴᴋ</a>"
-                print(f"Current Queue => {in_queue}")
-                channel_caption = f"\n\n⚡Join: {CHANNEL_LINK1}\n⚡Join: {CHANNEL_LINK2}"
+                # Forward message to all subchannels
                 for channel_id in CHANNELS:
                     try:
-                        fd = await lazy_userbot.forward_messages(channel_id, msg.id, MAIN_POST_CHANNEL)
-                        # print('sethod 1 done')
-                        # try:
-                        #     if msg.text and not msg.media:
-                        #         # Send text-only messages
-                        #         await lazy_userbot.send_message(entity=channel_id, message=msg.text, parse_mode='html')
-                        #         print('method 2 done')
-                                
-                        #     elif msg.media: 
-                        #         # Send media with or without captions
-                        #         await lazy_userbot.send_file(entity=channel_id, file=msg.media, caption=msg.text or "",  parse_mode='html')
-                        #         print('method 3 done')
-                        # except Exception as e:
-                        #     print(f"error =>>>>>>>>> {e}")
-                        #     pass
+                        # Custom caption with main channel link
+                        main_post_link = f"https://t.me/c/{str(MAIN_POST_CHANNEL)[4:]}/{msg.id}"
+                        custom_caption = (msg.caption or "") + f"\n\n⚡Join: {CHANNEL_LINK1}\n⚡Join: {CHANNEL_LINK2}\n🔗 [Source Post]({main_post_link})"
+                        
+                        if msg.media:
+                            fd = await lazy_userbot.send_file(
+                                chat_id=channel_id,
+                                file=msg.media,
+                                caption=custom_caption,
+                                parse_mode="html",
+                            )
+                        else:
+                            fd = await lazy_userbot.send_message(
+                                chat_id=channel_id,
+                                text=custom_caption,
+                                parse_mode="html",
+                            )
 
-                        # await client.copy_message(chat_id=channel_id, from_chat_id=MAIN_POST_CHANNEL, message_id=msg.id, parse_mode=enums.ParseMode.HTML)
+                        print(f"✅ Forwarded message ID {msg.id} to channel {channel_id}")
                         fd_final_chat = str(channel_id)[4:]
                         forward_post_link = f"<a href='https://telegram.me/c/{fd_final_chat}/{fd.id}'>ʟɪɴᴋ</a>"
-                        print(f"✅ Forwarded message ID {msg.id} to channel {channel_id} |=> chatid =>{fd_final_chat} |=> fd link {forward_post_link}")
-
                         await channel_progress.edit_text(lazydeveloper.CHANNEL_PROGRESS.format(channel_id, msg.id, forward_post_link, main_post_link), parse_mode=enums.ParseMode.HTML)
-                        await asyncio.sleep(1)  # Short delay between channels
+                        await asyncio.sleep(1)  # Short delay between subchannels
+                    except FloodWait as e:
+                        print(f"⏳ FloodWait: Sleeping for {e.x} seconds.")
+                        await asyncio.sleep(e.x)
                     except Exception as e:
                         print(f"❌ Failed to forward message ID {msg.id} to channel {channel_id}: {e}")
 
-                # work after sending message :
-                await db.set_skip_msg_id(msg.id)
+                # Mark message as forwarded
+                forwarded_ids.add(msg.id)
+                await db.add_forwarded_id(user_id, msg.id)
+                # await db.set_skip_msg_id(user_id, msg.id)
                 sent_count += 1
                 progress_percentage = (sent_count/total_messages) * 100
                 percent = f"{progress_percentage:.2f}"
                 await post_progress.edit_text(lazydeveloper.POST_PROGRESS.format(sent_count, total_messages, in_queue, percent), parse_mode=enums.ParseMode.HTML)
 
-                # Delay before processing the next message
                 if in_queue > 0:
                     print(f"⏳ Waiting {DELAY_BETWEEN_POSTS} seconds before processing the next post.")
                     await asyncio.sleep(DELAY_BETWEEN_POSTS)
 
+                # Exit loop once all subchannels are processed
+                break
+            except Exception as e:
+                print(f"❌ Error forwarding message ID {msg.id}: {e}")
+
         await channel_progress.delete()
         await post_progress.delete()
-        await message.reply(f"✅ ᴀʟʟ ᴍᴇssᴀɢᴇs ғʀᴏᴍ ᴍᴀɪɴ ᴄʜᴀɴɴᴇʟ ʜᴀᴠᴇ ʙᴇᴇɴ ғᴏʀᴡᴀʀᴅᴇᴅ ᴛᴏ ᴀʟʟ sᴜʙ-ᴄʜᴀɴɴᴇʟs.")
-
+        await message.reply("✅ Random messages from the main channel have been forwarded to all subchannels.")
     except Exception as e:
-        print(f"❌ Error occurred: {e}")
-        await message.reply("❌ Failed to process messages.")
-        #finally disconnect the session to avoid broken pipe error 
+        print(e)
+
+
+
+    # try:
+    #     # messages = []
+    #     last_message_id = await db.get_skip_msg_id()  # Start fetching from the most recent message
+    #     print(f"The last message id got => {last_message_id}")
+    #     async with lock:
+    #         # running first loop to show realtime update
+    #         async for _ in lazy_userbot.iter_messages(MAIN_POST_CHANNEL, offset_id=last_message_id, reverse=True):
+    #             total_messages += 1
+
+    #         print(f"Total messages to forward: {total_messages}")
+            
+    #         if total_messages == 0:
+    #             # If no messages to process, inform the user immediately
+    #             await message.reply("✅ No new messages to forward.")
+    #             return
+
+    #         print(f"Total messages to forward: {total_messages}")
+    #         sent_count = 0
+    #         in_queue = total_messages
+
+    #         channel_progress = await client.send_message(
+    #             user_id,
+    #             lazydeveloper.CHANNEL_PROGRESS.format("⏳", "⏳", "⏳", "⏳")
+    #         )
+
+    #         post_progress = await client.send_message(
+    #             user_id,
+    #             lazydeveloper.POST_PROGRESS.format(sent_count, total_messages, in_queue, 0)
+    #         )
+
+    #         # Fetch messages in reverse order
+    #         async for msg in lazy_userbot.iter_messages(MAIN_POST_CHANNEL, offset_id=last_message_id, reverse=True):
+    #             in_queue -= 1
+    #             final_chat = str(MAIN_POST_CHANNEL)[4:]
+    #             main_post_link = f"<a href='https://telegram.me/c/{final_chat}/{msg.id}'>ʟɪɴᴋ</a>"
+    #             print(f"Current Queue => {in_queue}")
+    #             channel_caption = f"\n\n⚡Join: {CHANNEL_LINK1}\n⚡Join: {CHANNEL_LINK2}"
+    #             for channel_id in CHANNELS:
+    #                 try:
+    #                     fd = await lazy_userbot.forward_messages(channel_id, msg.id, MAIN_POST_CHANNEL)
+    #                     # print('sethod 1 done')
+    #                     # try:
+    #                     #     if msg.text and not msg.media:
+    #                     #         # Send text-only messages
+    #                     #         await lazy_userbot.send_message(entity=channel_id, message=msg.text, parse_mode='html')
+    #                     #         print('method 2 done')
+                                
+    #                     #     elif msg.media: 
+    #                     #         # Send media with or without captions
+    #                     #         await lazy_userbot.send_file(entity=channel_id, file=msg.media, caption=msg.text or "",  parse_mode='html')
+    #                     #         print('method 3 done')
+    #                     # except Exception as e:
+    #                     #     print(f"error =>>>>>>>>> {e}")
+    #                     #     pass
+
+    #                     # await client.copy_message(chat_id=channel_id, from_chat_id=MAIN_POST_CHANNEL, message_id=msg.id, parse_mode=enums.ParseMode.HTML)
+    #                     fd_final_chat = str(channel_id)[4:]
+    #                     forward_post_link = f"<a href='https://telegram.me/c/{fd_final_chat}/{fd.id}'>ʟɪɴᴋ</a>"
+    #                     print(f"✅ Forwarded message ID {msg.id} to channel {channel_id} |=> chatid =>{fd_final_chat} |=> fd link {forward_post_link}")
+
+    #                     await channel_progress.edit_text(lazydeveloper.CHANNEL_PROGRESS.format(channel_id, msg.id, forward_post_link, main_post_link), parse_mode=enums.ParseMode.HTML)
+    #                     await asyncio.sleep(1)  # Short delay between channels
+    #                 except Exception as e:
+    #                     print(f"❌ Failed to forward message ID {msg.id} to channel {channel_id}: {e}")
+
+    #             # work after sending message :
+    #             await db.set_skip_msg_id(msg.id)
+    #             sent_count += 1
+    #             progress_percentage = (sent_count/total_messages) * 100
+    #             percent = f"{progress_percentage:.2f}"
+    #             await post_progress.edit_text(lazydeveloper.POST_PROGRESS.format(sent_count, total_messages, in_queue, percent), parse_mode=enums.ParseMode.HTML)
+
+    #             # Delay before processing the next message
+    #             if in_queue > 0:
+    #                 print(f"⏳ Waiting {DELAY_BETWEEN_POSTS} seconds before processing the next post.")
+    #                 await asyncio.sleep(DELAY_BETWEEN_POSTS)
+
+    #     await channel_progress.delete()
+    #     await post_progress.delete()
+    #     await message.reply(f"✅ ᴀʟʟ ᴍᴇssᴀɢᴇs ғʀᴏᴍ ᴍᴀɪɴ ᴄʜᴀɴɴᴇʟ ʜᴀᴠᴇ ʙᴇᴇɴ ғᴏʀᴡᴀʀᴅᴇᴅ ᴛᴏ ᴀʟʟ sᴜʙ-ᴄʜᴀɴɴᴇʟs.")
+
+    # except Exception as e:
+    #     print(f"❌ Error occurred: {e}")
+    #     await message.reply("❌ Failed to process messages.")
+    #     #finally disconnect the session to avoid broken pipe error 
     
     await lazy_userbot.disconnect()
 

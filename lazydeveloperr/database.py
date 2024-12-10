@@ -8,6 +8,7 @@ class Database:
         self.db = self._client[database_name]
         self.col = self.db.user
         self.settings_col = self.db.settings  # New collection for settings like skip_msg_id
+        self.forwarded_col = self.db.forwarded_messages  # New collection for forwarded IDs
 
     def new_user(self, id):
         return dict(
@@ -116,5 +117,25 @@ class Database:
         """
         record = await self.settings_col.find_one({"type": "skip_msg"})
         return record.get("message_id", 0) if record else 0
+
+    # Forwarded IDs management
+    async def get_forwarded_ids(self, user_id: int) -> set:
+        """
+        Get the set of forwarded message IDs for a specific user.
+        """
+        user_data = await self.forwarded_col.find_one({"user_id": user_id})
+        if user_data and "forwarded_ids" in user_data:
+            return set(user_data["forwarded_ids"])
+        return set()
+
+    async def add_forwarded_id(self, user_id: int, msg_id: int):
+        """
+        Add a forwarded message ID to the database for a specific user.
+        """
+        await self.forwarded_col.update_one(
+            {"user_id": user_id},
+            {"$addToSet": {"forwarded_ids": msg_id}},  # Use $addToSet to avoid duplicates
+            upsert=True  # Create the document if it doesn't exist
+        )
 
 db = Database(DB_URL, DB_NAME)
