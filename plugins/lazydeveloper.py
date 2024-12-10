@@ -25,6 +25,7 @@ from telethon.errors import (
     PhoneCodeExpiredError,
     SessionPasswordNeededError,
     PasswordHashInvalidError,
+    MessageIdInvalidError
 )
 # user_forward_data = {}
 St_Session = {}
@@ -433,16 +434,22 @@ async def autoposter(client, message):
     async with lock:
         try:
             while any(channel_queues.values()):  # Continue until all queues are empty
-                
+                in_queue -= 1
                 for channel_id in CHANNELS:
                     
                     if not channel_queues[channel_id]:
                         continue  # Skip if the queue for this channel is empty
 
                     msg = channel_queues[channel_id].pop(0)  # Get the next message for this channel
-                    in_queue -= 1
 
                     try:
+                        
+                        # Validate message existence
+                        message = await lazy_userbot.get_messages(MAIN_POST_CHANNEL, ids=msg.id)
+                        if not message:
+                            print(f"❌ Message ID {msg.id} does not exist in channel {MAIN_POST_CHANNEL}")
+                            continue
+
                         # Forward the message to the current channel
                         main_post_link = f"https://t.me/c/{str(MAIN_POST_CHANNEL)[4:]}/{msg.id}"
                         fd = await lazy_userbot.forward_messages(channel_id, msg.id, MAIN_POST_CHANNEL)
@@ -473,13 +480,33 @@ async def autoposter(client, message):
                         )
 
                         await asyncio.sleep(1)  # Short delay for smoother operation
+                    except MessageIdInvalidError:
+                        await message.reply(f"❌ Message ID {msg.id} is invalid or inaccessible in channel {MAIN_POST_CHANNEL}. Skipping...")
+                        
+                        # Remove the message from all other channel queues
+                        for other_channel in CHANNELS:
+                            if other_channel != channel_id and msg in channel_queues[other_channel]:
+                                channel_queues[other_channel].remove(msg)
+                        forwarded_ids.add(msg.id)
+                        await db.add_forwarded_id(user_id, MAIN_POST_CHANNEL, msg.id)
+                        sent_count += 1
 
+                        progress_percentage = (sent_count / total_messages) * 100
+                        percent = f"{progress_percentage:.2f}"
+                        await post_progress.edit_text(
+                            lazydeveloper.POST_PROGRESS.format(sent_count, total_messages, in_queue, percent),
+                            parse_mode=enums.ParseMode.HTML
+                        )
+
+                        await asyncio.sleep(1)
+                        continue 
                     except FloodWait as e:
                         print(f"⏳ FloodWait: Sleeping for {e.x} seconds.")
                         await asyncio.sleep(e.x)
                     except Exception as e:
                         print(f"❌ Failed to forward message ID {msg.id} to channel {channel_id}: {e}")
-
+                        await asyncio.sleep(5)
+                        continue
                 if in_queue > 0:
                     print(f"⏳ Waiting {DELAY_BETWEEN_POSTS} seconds before processing the next batch.")
                     await asyncio.sleep(DELAY_BETWEEN_POSTS)
